@@ -56,8 +56,6 @@
 
 #define FORMAT_DEFAULT		-1
 #define FORMAT_RAW		0
-#define FORMAT_VOC		1
-#define FORMAT_WAVE		2
 
 /* global data */
 
@@ -169,17 +167,6 @@ static void usage(char *command)
 "-v, --verbose           show PCM structure and setup (accumulative)\n"
 "-I, --separate-channels one file for each channel\n"
 		, command);
-	fprintf(stderr, "Recognized sample formats are:");
-	for (k = 0; k < SND_PCM_FORMAT_LAST; ++k) {
-		const char *s = snd_pcm_format_name(k);
-		if (s)
-			fprintf(stderr, " %s", s);
-	}
-	fprintf(stderr, "\nSome of these may not be available on selected hardware\n");
-	fprintf(stderr, "The availabled format shortcuts are:\n");
-	fprintf(stderr, "-f cd (16 bit little endian, 44100, stereo)\n");
-	fprintf(stderr, "-f cdr (16 bit big endian, 44100, stereo)\n");
-	fprintf(stderr, "-f dat (16 bit little endian, 48000, stereo)\n");
 }
 
 static void names_list(void)
@@ -363,7 +350,7 @@ int main(int argc, char *argv[])
 	file_type = FORMAT_DEFAULT;
 	if (strstr(argv[0], "arecord")) {
 		stream = SND_PCM_STREAM_CAPTURE;
-		file_type = FORMAT_WAVE;
+		file_type = FORMAT_RAW;
 		command = "arecord";
 		start_delay = 1;
 	} else if (strstr(argv[0], "aplay")) {
@@ -405,53 +392,23 @@ int main(int argc, char *argv[])
 		case 't':
 			if (strcasecmp(optarg, "raw") == 0)
 				file_type = FORMAT_RAW;
-			else if (strcasecmp(optarg, "voc") == 0)
-				file_type = FORMAT_VOC;
-			else if (strcasecmp(optarg, "wav") == 0)
-				file_type = FORMAT_WAVE;
 			else {
 				error("unrecognized file format %s", optarg);
 				return 1;
 			}
 			break;
 		case 'c':
-			rhwparams.channels = atoi(optarg);
-			if (rhwparams.channels < 1 || rhwparams.channels > 32) {
-				error("value %i for channels is invalid", rhwparams.channels);
-				return 1;
-			}
+			rhwparams.channels = 2;
 			break;
 		case 'f':
-			if (strcasecmp(optarg, "cd") == 0 || strcasecmp(optarg, "cdr") == 0) {
-/* killing this comparison as AU has been removed */
-				if (!strcasecmp(optarg, "cdr"))
-					rhwparams.format = SND_PCM_FORMAT_S16_BE;
-				else
-					rhwparams.format = SND_PCM_FORMAT_S16_LE;
-
-				rhwparams.rate = 44100;
-				rhwparams.channels = 2;
-			} else if (strcasecmp(optarg, "dat") == 0) {
-				rhwparams.format = SND_PCM_FORMAT_S16_LE;
-				rhwparams.rate = 48000;
-				rhwparams.channels = 2;
-			} else {
-				rhwparams.format = snd_pcm_format_value(optarg);
-				if (rhwparams.format == SND_PCM_FORMAT_UNKNOWN) {
-					error("wrong extended format '%s'", optarg);
-					exit(EXIT_FAILURE);
-				}
+			rhwparams.format = snd_pcm_format_value("S16_LE");
+			if (rhwparams.format == SND_PCM_FORMAT_UNKNOWN) {
+				error("wrong extended format '%s'", optarg);
+				exit(EXIT_FAILURE);
 			}
 			break;
 		case 'r':
-			tmp = atoi(optarg);
-			if (tmp < 300)
-				tmp *= 1000;
-			rhwparams.rate = tmp;
-			if (tmp < 2000 || tmp > 192000) {
-				error("bad speed value %i", tmp);
-				return 1;
-			}
+			rhwparams.rate = 22050;
 			break;
 		case 'd':
 			timelimit = atoi(optarg);
@@ -502,7 +459,7 @@ int main(int argc, char *argv[])
 			command = "arecord";
 			start_delay = 1;
 			if (file_type == FORMAT_DEFAULT)
-				file_type = FORMAT_WAVE;
+				file_type = FORMAT_RAW;
 			break;
 		default:
 			fprintf(stderr, "Try `%s --help' for more information.\n", command);
@@ -1864,16 +1821,10 @@ static void playback(char *name)
 		voc_play(fd, ofs, name);
 		goto __end;
 	}
-	/* read bytes for WAVE-header */
-	if ((dtawave = test_wavefile(fd, audiobuf, dta)) >= 0) {
-		pbrec_count = calc_count();
-		playback_go(fd, dtawave, pbrec_count, FORMAT_WAVE, name);
-	} else {
-		/* should be raw data */
-		init_raw_data();
-		pbrec_count = calc_count();
-		playback_go(fd, dta, pbrec_count, FORMAT_RAW, name);
-	}
+	/* should be raw data */
+	init_raw_data();
+	pbrec_count = calc_count();
+	playback_go(fd, dta, pbrec_count, FORMAT_RAW, name);
       __end:
 	if (fd != 0)
 		close(fd);
